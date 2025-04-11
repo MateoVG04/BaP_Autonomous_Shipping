@@ -1,0 +1,5 @@
+gymnasium==0.29.1
+matplotlib==3.10.1
+numpy==2.2.4
+Shapely==2.1.0
+torch==2.6.0
