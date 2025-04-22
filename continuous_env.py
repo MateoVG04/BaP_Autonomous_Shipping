@@ -125,11 +125,17 @@ class Continuous2DEnv(gym.Env):
         self._load_obstacles_and_paths(csv_input_dir)
 
         # Path and checkpoints initialization
+        """
+        My own code from here (line 128)
+        """
         try:
             path = np.loadtxt(os.path.join(csv_input_dir, 'trajectory_points_no_scale.csv'), delimiter=',',
                               skiprows=1)
         except FileNotFoundError:
             raise FileNotFoundError("The file 'trajectory_points_no_scale.csv' could not be found.")
+        """
+        My own code ends here (line132)
+        """
 
         path = create_checkpoints_from_simple_path(path, self.CHECKPOINTS_DISTANCE)
         checkpoints = [{'pos': np.array(point, dtype=np.float32), 'radius': 1.0} for point in path]

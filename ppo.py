@@ -327,7 +327,13 @@ def evaluate_trained_agent(checkpoint_path, num_episodes=3):
     agent = ShipPPOAgent(env)
     
     # Load checkpoint
-    checkpoint = torch.load(checkpoint_path)
+    # checkpoint = torch.load(checkpoint_path) # This line of code doesn't work, because I don't have a GPU
+    # and the checkpoint_path was made on a device with a GPU
+
+    # The map_location=torch.device('cpu') tells PyTorch to move all model weights to the CPU even if they
+    # were originally stored on a GPU.
+    checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
+
     agent.network.load_state_dict(checkpoint['model_state_dict'])
     agent.network.eval()
     
@@ -437,7 +443,7 @@ def evaluate_trained_agent(checkpoint_path, num_episodes=3):
                                     edgecolor='brown', facecolor='none', 
                                     lw=2, label='Western Scheldt')
     ax1.add_patch(western_scheldt)
-    
+
     # Plot paths for each episode with different colors
     colors = plt.cm.rainbow(np.linspace(0, 1, num_episodes))
     for i, path in enumerate(all_paths):
