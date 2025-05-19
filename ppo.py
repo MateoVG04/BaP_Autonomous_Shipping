@@ -223,6 +223,11 @@ def main():
     # Environment setup
     ship_pos = [2060.0, -50.0]
     target_pos = [11530.0, 13000.0]
+
+    # corner
+    #target_pos = [2435.0, 1556]
+
+
     env = Continuous2DEnv(
         render_mode='human',
         max_steps=1200,  # This is now just a safety limit
@@ -315,7 +320,28 @@ def evaluate_trained_agent(checkpoint_path, num_episodes=3):
     """
     # Set up environment without rendering
     ship_pos = [2060.0, -50.0]
-    target_pos = [11530.0, 13000.0]
+    target_pos = [-1530.0, 12010.0]
+
+    # corner
+    # target_pos = [2435.0, 1556]
+
+    """
+                Custom start and goal states
+                """
+    # Original goal and start state
+    # ship_pos = [2060.0, -50.0]
+    # target_pos = [-1530.0, 12010.0]
+    # curricular_learning = [(2520,350),(2850,840),(3070,1420),(3600,1510),(3570,3370),(3380,4790),(2990,6040),(1460,6930),(770,8500),(320,10090),(-540,11550)]
+
+    # Very close goal and start state
+    # ship_pos = [2200.0, 30.0]
+    # target_pos = [2330.0, 60.0]
+
+    # Goal state is around the corner
+    # ship_pos = [2200.0, 30.0]
+    # target_pos = [2435.0, 1556]
+    # curricular_learning = [(2520, 350), (2850, 840), (3070, 1420)]
+
     env = Continuous2DEnv(
         render_mode=None,  # Disable rendering
         max_steps=1200,

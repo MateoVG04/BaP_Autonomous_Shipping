@@ -1,4 +1,8 @@
 import matplotlib
+
+from sarsa import SARSA, benchmark
+from sarsa import create_path_sarsa
+
 matplotlib.use('TkAgg')
 import tkinter as tk
 
@@ -119,7 +123,7 @@ class Continuous2DEnv(gym.Env):
         # Environment setup
         self.checkpoints = []
         self.current_checkpoint = 1
-        # self.target_pos = np.array(target_pos, dtype=np.float32)
+        self.target_pos = np.array(target_pos, dtype=np.float32)
 
         csv_input_dir = os.path.dirname(os.path.abspath(__file__))
         self._load_obstacles_and_paths(csv_input_dir)
@@ -129,8 +133,41 @@ class Continuous2DEnv(gym.Env):
         My own code from here (line 128)
         """
         try:
-            path = np.loadtxt(os.path.join(csv_input_dir, 'trajectory_points_no_scale.csv'), delimiter=',',
+            """
+            Custom start and goal states
+            """
+            # Original goal and start state
+            # ship_pos = [2060.0, -50.0]
+            # target_pos = [-1530.0, 12010.0]
+            curricular_learning = [(2520,350),(2850,840),(3070,1420),(3600,1510),(3570,3370),(3380,4790),(2990,6040),(1460,6930),(770,8500),(320,10090),(-540,11550)]
+
+            # Very close goal and start state
+            # ship_pos = [2200.0, 30.0]
+            # target_pos = [2330.0, 60.0]
+
+            # Goal state is around the corner
+            # ship_pos = [2200.0, 30.0]
+            # target_pos = [2435.0, 1556]
+            # curricular_learning = [(2520, 350), (2850, 840), (3070, 1420)]
+
+            #curricular_learning = []
+            agent = SARSA(
+                alpha=0.1,
+                epsilon=0.2,
+                grid_resolution=10,
+                goal=self.target_pos,
+                start=self.ship_pos,
+                save_map=False,
+                max_steps=24000,
+                curricular_learning=curricular_learning
+            )
+            path = create_path_sarsa(agent,num_episodes=300)
+
+            good_path = np.loadtxt(os.path.join(csv_input_dir, 'trajectory_points_no_scale.csv'), delimiter=',',
                               skiprows=1)
+
+            benchmark(good_path,path,agent)
+
         except FileNotFoundError:
             raise FileNotFoundError("The file 'trajectory_points_no_scale.csv' could not be found.")
         """
