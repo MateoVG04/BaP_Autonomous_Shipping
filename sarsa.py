@@ -18,7 +18,7 @@ class SARSA:
         self.gamma = gamma
         self.epsilon = epsilon
         self.epochs = epochs
-        self._just_switched = False  # <— new flag
+        self._just_switched = False
         self.device = torch.device("cpu")
         if len(curricular_learning) != 0:
             self.curricular_learning = curricular_learning.copy()
@@ -67,6 +67,12 @@ class SARSA:
 
 
     def discretize_map(self):
+        """
+            Discretize the environment contour into a grid occupancy map using self.grid_resolution.
+
+            :param: None
+            :return: occupancy_grid (np.ndarray): 2D array of shape (grid_width, grid_height) with 1 for navigable cells and 0 for obstacles
+        """
         csv_input_dir = os.path.dirname(os.path.abspath(__file__))
         contour_points = np.loadtxt(os.path.join(csv_input_dir, 'env_Sche_250cm_no_scale.csv'), delimiter=',',
                               skiprows=1)
@@ -103,12 +109,24 @@ class SARSA:
         return occupancy_grid
 
     def save_occupancy_grid(self, occupancy_grid, resolution):
+        """
+            Save the occupancy grid to a .npy file named using the given resolution.
+
+            :param occupancy_grid, resolution: occupancy_grid is an np.ndarray of the grid; resolution is the grid cell size for the filename.
+            :return: None
+        """
         csv_input_dir = os.path.dirname(os.path.abspath(__file__))
         save_path = os.path.join(csv_input_dir, 'occupancy_grid_'+str(resolution)+'.npy')
         np.save(save_path, occupancy_grid)
         print(f"Occupancy grid saved to {save_path}")
 
     def load_occupancy_grid(self):
+        """
+            Load the most accurate saved occupancy grid (or create one if none exist).
+
+            :param: None
+            :return: occupancy_grid (np.ndarray): 2D array of 1-navigable/0-obstacle cells
+        """
         csv_input_dir = os.path.dirname(os.path.abspath(__file__))
 
         files = [f for f in os.listdir(csv_input_dir) if f.startswith('occupancy_grid_') and f.endswith('.npy')]
@@ -158,14 +176,22 @@ class SARSA:
         return occupancy_grid
 
     def discretize_position(self, state):
+        """
+            Convert a continuous (x, y) position to grid indices based on self.x_min, self.y_min, and self.grid_resolution.
+
+            :param state: tuple of floats (x, y) in world coordinates
+            :return: tuple of ints (x_idx, y_idx) corresponding to the grid cell indices
+        """
         x_disc = int((state[0] - self.x_min) / self.grid_resolution)
         y_disc = int((state[1] - self.y_min) / self.grid_resolution)
         return (x_disc,y_disc)
 
     def dediscretize_path(self, discrete_path):
         """
-        Convert a list of grid‐indices (a path: x_idx, y_idx) back into continuous
-        (x, y) positions at the *center* of each grid cell.
+            Convert a sequence of grid index pairs to continuous (x, y) coordinates at each cell’s center.
+
+            :param discrete_path: Iterable of (x_idx, y_idx) tuples in grid indices
+            :return: List of (x, y) float tuples representing cell-center positions
         """
         continuous = []
         for x_idx, y_idx in discrete_path:
@@ -175,6 +201,12 @@ class SARSA:
         return continuous
 
     def show_map(self):
+        """
+            Display the discretized grid and continuous environment polygon with start, goal, and sub-goals.
+
+            :param: None
+            :return: None
+        """
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 16))
 
         ax1.imshow(self.map.T, origin='lower', cmap='Greys')
@@ -216,7 +248,10 @@ class SARSA:
 
     def reward_function(self, state, episode=0):
         """
-            Calculates reward and whether the episode should terminate.
+            Compute the reward, termination flag, and goal indicator for a given grid state and episode.
+
+            :param state, episode: state is (x_idx, y_idx) grid indices tuple; episode is the current episode number (int)
+            :return: tuple (final_reward (float), done (bool), goal (int))
         """
         x_idx, y_idx = state
         scaling_factor_goal = 3
@@ -235,7 +270,6 @@ class SARSA:
             else:
                 done = True
             print(f"Goal reached at ({x_idx}, {y_idx})")
-        # Check if inside grid bounds
         elif not (0 <= x_idx < self.grid_width and 0 <= y_idx < self.grid_height):
             # Out of bounds → treat like hitting a wall
             reward = self.reward_collision(reach_goal, time_constraint)
@@ -262,20 +296,21 @@ class SARSA:
 
     def next_sub_goal(self,state, episode=0):
         """
-            Calculates the next sub goal when working with curricular learning.
+            Advance to and log the next sub-goal when using curricular learning.
+
+            :param state: tuple of ints (x_idx, y_idx) indicating the reached grid cell
+            :param episode: int current episode number
+            :return: None
         """
-        # 1) only do all of this the very first time we arrive
         if self._just_switched:
             return
         self._just_switched = True
 
-        # 2) figure out what the *next* subgoal will be
         if len(self.curricular_learning) > 1:
             upcoming = self.curricular_learning[1]
         else:
             upcoming = self.goal
 
-        # 3) write to your log file
         reached = (int(state[0]), int(state[1]))
         ts = time.strftime("%Y-%m-%d %H:%M:%S")
         with open("subgoal_transitions.log", "a") as f:
@@ -301,6 +336,13 @@ class SARSA:
 
 
     def reward_direction(self,current_position):
+        """
+            Reward based on change in Manhattan distance to the goal since the last step.
+
+            :param current_position: tuple of ints (x_idx, y_idx) current grid indices
+            :return: float positive if closer, negative if farther, zero on first move
+        """
+
         # Other simple option for reward direction
         # if distance <= self.previous_distance:
         #     reward = 1
@@ -309,12 +351,7 @@ class SARSA:
         # self.previous_distance = distance
         #
         # return reward
-        """
-               Reward (or punish) based on change in Manhattan distance to the current target.
-               Uses self.x_goal, self.y_goal (which are updated for sub-goals under curricular learning)
-               and self.previous_distance, which is reset each episode.
-               Returns a float in roughly [-1, 1]: positive if we moved closer, negative if farther.
-               """
+
         x_idx, y_idx = current_position
         current_dist = abs(self.x_goal - x_idx) + abs(self.y_goal - y_idx)
 
@@ -329,6 +366,12 @@ class SARSA:
         return delta
 
     def reward_proximity_to_wall(self, x, y):
+        """
+            Not fully implemented and currently unused; penalizes proximity to walls for safer paths.
+
+            :param x, y: int grid indices to evaluate distance from nearest wall
+            :return: float negative penalty based on wall distance, or -5.0 if out-of-bounds
+        """
         if 0 <= x < self.grid_width and 0 <= y < self.grid_height:
             dist = self.wall_distance_map[x, y]
             if dist < 2*self.grid_resolution:  # too close
@@ -343,35 +386,48 @@ class SARSA:
             return -5.0  # punish unknown/out-of-bounds area just in case
 
     def reward_collision(self, reach_goal, time_constraint):
+        """
+            Compute the collision penalty from goal reach estimate and time constraint.
+
+            :param reach_goal, time_constraint: reach_goal (float) estimated reward to reach goal; time_constraint (float) per-step time penalty factor
+            :return: float negative penalty applied on collision
+        """
         return -(reach_goal + abs(time_constraint*self.total_distance_discrete))
 
     def normalize_reward(self, r:float)->float:
         """
-        dynamic reward normalization because we don't know the exact reward bounds.
-        :param reward:
-        :return: normalized reward
+            Scale the raw reward into a bounded range using hyperbolic tangent.
+            Not used, because I this had not the intended result.
+
+            :param r: raw reward value (float)
+            :return: normalized reward in (-1, 1) (float)
         """
         return math.tanh(r)
 
 
     def epsilon_greedy(self, state):
         """
-        Balance between exploration/exploitation
-        :param state:
-        :return:
+            Choose an action using ε-greedy policy for exploration vs. exploitation.
+
+            :param state: tuple of ints (x_idx, y_idx) current grid indices
+            :return: int selected action index
         """
         x, y = state
         print('current epsilon: '+str(self.epsilon))
         if random.random() < self.epsilon:
-            # takes a random action
             return random.randint(0, self.action_size - 1)
-        # argmax finds the action with the highest q-value
         q = self.q_table[x, y]
         best = np.flatnonzero(q == q.max())
         # random between multiple best actions (in case of a tie)
         return np.random.choice(best)
 
     def update(self,state_idx, action_idx, reward, next_state_idx, next_action_idx):
+        """
+            Perform SARSA Q-table update using current and next state-action information.
+
+            :param state_idx, action_idx, reward, next_state_idx, next_action_idx: state_idx is (x, y) tuple; action_idx and next_action_idx are int actions; reward is float; next_state_idx is (nx, ny) tuple
+            :return: None
+        """
         x, y = state_idx
         nx, ny = next_state_idx
 
@@ -382,21 +438,28 @@ class SARSA:
 
 
     def select_action(self, state):
+        """
+            Choose an action via ε-greedy policy and return its movement vector and index.
+
+            :param state: tuple of ints (x_idx, y_idx) current grid indices
+            :return: tuple (np.ndarray of shape (2,), int) movement delta [dx, dy] and selected action index
+        """
         action = self.epsilon_greedy(state)
         dx, dy = self.actions[action]
         return np.array([dx, dy], dtype=np.float32), action
 
     def reset_episode(self):
-        # reset the curriculum list
+        """
+            Reset episode state: curriculum, start/goal positions, flags, and distance tracker.
+
+            :param: None
+            :return: None
+        """
         if self.isCurricular and self.original_curricular_learning is not None:
             self.curricular_learning = self.original_curricular_learning.copy()
-        # reset the “just‐switched” flag so next_sub_goal can fire again
         self._just_switched = False
 
-        # reset the discrete start
         self.x_start, self.y_start = self.discretize_position(self.start)
-
-        # pick the correct first goal
         if self.isCurricular and self.curricular_learning:
             # point at the first sub‐goal in the list
             self.x_goal, self.y_goal = self.discretize_position(self.curricular_learning[0])
@@ -404,13 +467,18 @@ class SARSA:
             # no sub‐goals => point at the real goal
             self.x_goal, self.y_goal = self.discretize_position(self.goal)
 
-        # reset your distance tracker
         self.previous_distance = None
         self.total_distance_discrete = (
                 abs(self.x_goal - self.x_start) + abs(self.y_goal - self.y_start)
         )
 
 def run_episode(agent,episode):
+    """
+        Execute one SARSA learning episode: reset, step until goal/termination, and record results.
+
+        :param agent, episode: agent is the RL agent instance; episode is the current episode number (int)
+        :return: dict with keys 'episode_reward' (float), 'path' (list of (x_idx, y_idx)), and 'goal' (int indicator)
+    """
     agent.reset_episode()
     path = []
     state = agent.start  # Start at the agent's starting position
@@ -469,6 +537,16 @@ def run_episode(agent,episode):
     }
 
 def mean_and_max_cross_error(good_path, my_path):
+    """
+        Calculates the mean and maximum cross-track error between a reference path and a given path.
+
+        Parameters:
+        good_path (list of tuples): Coordinates defining the reference path.
+        my_path (list of tuples): Coordinates defining the user-provided path.
+
+        Returns:
+        tuple: Mean and maximum cross-track error, along with a list of individual errors.
+    """
     ref_line = LineString(good_path)
     errors = [ref_line.distance(Point(x, y)) for x, y in my_path]
     print("Mean cross-track error: {:.1f} m".format(np.mean(errors)))
@@ -476,6 +554,12 @@ def mean_and_max_cross_error(good_path, my_path):
     return np.mean(errors), np.max(errors), errors
 
 def benchmark(good_path, my_path, agent):
+    """
+        Plot path comparison and error statistics between reference and test paths.
+
+        :param good_path, my_path, agent: good_path and my_path are sequences of (x, y) coordinates; agent provides start and goal for annotations.
+        :return: None
+    """
     _,_,errors = mean_and_max_cross_error(good_path,my_path)
     plt.figure()
     plt.plot()
@@ -511,6 +595,12 @@ def benchmark(good_path, my_path, agent):
     plt.show()
 
 def linear_epsilon(episode, num_episodes, max_eps=0.2, min_eps=0.0, anneal_episodes=0.9):
+    """
+        Linearly anneal ε from max_eps to min_eps over initial episodes.
+
+        :param episode, num_episodes, max_eps, min_eps, anneal_episodes: episode index (int), total episodes (int), start ε (float), end ε (float), fraction of episodes to anneal (float)
+        :return: ε value for the current episode (float)
+    """
     # drop ε from max_eps → min_eps over the first `anneal_episodes * num_episodes` episodes
     frac = min(1.0, episode/(anneal_episodes*num_episodes))
     epsilon = 0
@@ -521,6 +611,12 @@ def linear_epsilon(episode, num_episodes, max_eps=0.2, min_eps=0.0, anneal_episo
     return epsilon
 
 def create_path_sarsa(agent:SARSA, num_episodes):
+    """
+        Train the SARSA agent over multiple episodes and return the final continuous path.
+
+        :param agent, num_episodes: agent is a SARSA instance; num_episodes is the total episodes to run (int)
+        :return: np.ndarray of continuous (x, y) coordinates for the path taken in the last episode
+    """
     eval_frequency = 1
     rewards = []
     goals = []
@@ -531,40 +627,29 @@ def create_path_sarsa(agent:SARSA, num_episodes):
     print("Starting training...")
 
     for episode in range(num_episodes):
-        # Run one full episode
         agent.epsilon = linear_epsilon(episode, num_episodes, max_eps=0.2, min_eps=0.0, anneal_episodes=0.8)
-        # if episode == int(num_episodes * 0.75):
-        #     agent.epsilon = 0.1
-        #     agent.alpha = 0.02
-        # if episode == num_episodes - 1:
-        #     agent.epsilon = 0
-
         result = run_episode(agent, episode)
 
         # Store metrics
         rewards.append(result['episode_reward'])
-        # capture the best successful episode
         rewards.append(result['episode_reward'])
         if result['goal'] == 1 and result['episode_reward'] > best_reward:
             best_reward, best_path = result['episode_reward'], result['path']
         if result['goal'] == 1:
             goals.append(1)
 
-        # (optionally adjust α here too)
         if episode == int(num_episodes * 0.75):
             agent.alpha = 0.02
 
         if episode == num_episodes - 1:
             last_path = result['path']
         print('Episode: ' + str(episode))
-        # Optionally print progress
         if (episode + 1) % eval_frequency == 0:
             avg_reward = np.mean(rewards[-eval_frequency:])
             print(f"Episode {episode + 1}/{num_episodes} | Average Reward (last {eval_frequency}): {avg_reward:.3f}")
 
     print("\nTraining completed!")
 
-    # Optionally plot final reward curve
     plt.plot(rewards)
     plt.xlabel('Episode')
     plt.ylabel('Episode Reward')
@@ -590,10 +675,6 @@ def create_path_sarsa(agent:SARSA, num_episodes):
             label='best path to goal'
         )
     lx, ly = zip(*last_path)
-    disc_curr = []
-    for sub in agent.original_curricular_learning:
-        disc_curr.append(agent.discretize_position(sub))
-    print(disc_curr)
 
     plt.plot(lx, ly, marker='o', markersize=3, linestyle='-', linewidth=1.25, color='green', label='(last) ideal path')
     plt.scatter(agent.x_start, agent.y_start, color='blue', s=80, label='Start')
@@ -601,7 +682,6 @@ def create_path_sarsa(agent:SARSA, num_episodes):
     plt.scatter(gx, gy, color='red', s=80, label='Goal')
     if agent.original_curricular_learning != None and len(agent.original_curricular_learning) != 0:
         xs, ys = zip(*(agent.discretize_position(sg) for sg in agent.original_curricular_learning))
-        # plot ze in één keer, met één label
         plt.scatter(xs, ys,
                     color='yellow',
                     s=25,
@@ -616,7 +696,7 @@ def create_path_sarsa(agent:SARSA, num_episodes):
 
 def main():
     num_episodes = 3000
-    eval_frequency = 1 #int(num_episodes*0.2)
+    eval_frequency = 1
 
     """
     Different goals, to test different setups with different curriculum learning
